@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tibet-genesis"
+version = "0.1.1"
+description = "T-1 Genesis pass — pre-grant airlock for AI tools/agents. Self-FIR/A bilateral consent on hardware-anchored claims. Dirty verdict emits genesis.reattestation.required event so operator must scan fingerprint before retry — no dead-end blocked states. 'Pinning starts after truth exists. Genesis airlock creates the first truth.'"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Jasper van de Meent", email = "jasper@humotica.com" },
+    { name = "Root AI", email = "root_idd@humotica.nl" },
+    { name = "Codex", email = "codex@humotica.nl" }
+]
+keywords = [
+    "tibet",
+    "genesis",
+    "pre-grant",
+    "airlock",
+    "t-1",
+    "supply-chain",
+    "mcp-security",
+    "registry-phase-substitution",
+    "humotica",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security :: Cryptography",
+    "Topic :: System :: Networking",
+]
+
+# Bootstrap-or-die discipline: every Humotica package we touch declares the
+# OSAPI bootstrap-pair as runtime deps. Genesis pass uses JIS for the
+# self-bilateral consent + TIBET tokens for the provenance chain on each capture.
+dependencies = [
+    "tibet-core>=0.5.0b2",
+    "jis-core>=0.4.0b1",
+]
+
+[project.optional-dependencies]
+# Cross-validate emitted records against tibet-cap-bus contract when installed.
+audit = ["tibet-cap-bus>=0.1.3", "tibet-audit>=0.27.0"]
+
+[project.urls]
+Homepage = "https://humotica.com"
+Repository = "https://github.com/Humotica/tibet-genesis"
+
+[project.scripts]
+tibet-genesis = "tibet_genesis.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tibet_genesis"]
