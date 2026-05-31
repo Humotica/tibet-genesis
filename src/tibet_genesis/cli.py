@@ -21,7 +21,13 @@ from typing import Optional
 
 from . import __version__
 from .candidate import capture_candidate
-from .events import build_genesis_event, build_reattestation_event, write_genesis_event
+from .events import (
+    HAS_TIBET_DROP,
+    build_genesis_event,
+    build_reattestation_event,
+    build_reattestation_tat,
+    write_genesis_event,
+)
 from .verdict import diff_against_t0, merge_or_block, verify_candidate
 
 
@@ -66,19 +72,25 @@ def cmd_fork(args) -> int:
 
     event_type = "t-1.capture"
     event = build_genesis_event(verdict, event_type=event_type)
+    tat_envelope = None
     paths = []
     if not args.no_log:
         paths.append(write_genesis_event(event, args.output))
         if verdict.requires_reattestation:
-            # Emit a second event that explicitly tells the capability-grant
-            # layer "stop retrying, wait for fresh biometric-confirmed claim".
+            # 1) JSONL audit-event for tibet-audit.
             reattest_event = build_reattestation_event(verdict)
             paths.append(write_genesis_event(reattest_event, args.output))
+            # 2) TAT envelope (Jasper 31 mei): intent=request_re_attestation
+            #    routable via SSM dispatch surface, consumable by trust-kernel
+            #    which chooses the biometric vehicle (smartphone/laptop/passkey).
+            tat_envelope = build_reattestation_tat(verdict)
+            paths.append(write_genesis_event(tat_envelope, args.output))
 
     if args.json:
         out = {"genesis": event}
         if verdict.requires_reattestation:
             out["reattestation_required"] = build_reattestation_event(verdict)
+            out["reattestation_tat"] = tat_envelope or build_reattestation_tat(verdict)
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return 0 if verdict.grant_allowed else 1
 
@@ -92,10 +104,19 @@ def cmd_fork(args) -> int:
     if verdict.requires_reattestation:
         print(f"  ↳ REATTESTATION REQUIRED: operator must scan fingerprint")
         print(f"    (capability-grant layer should pause all retries until then)")
+        if tat_envelope is not None:
+            print(f"  ↳ TAT envelope emitted:")
+            print(f"      magic:      {tat_envelope['magic']}")
+            print(f"      surface:    {tat_envelope['surface']}  (SSM 4-dot)")
+            print(f"      intent:     {tat_envelope['intent']}")
+            print(f"      candidate:  {tat_envelope['payload_ref']['hash']}")
+            print(f"      ttl:        {tat_envelope['policy']['ttl_seconds']}s")
+            strict = "strict TAT (tibet-drop)" if HAS_TIBET_DROP else "self-validating shape (no tibet-drop installed)"
+            print(f"      validation: {strict}")
     if paths:
         print(f"  audit-log:        {paths[0]}")
         if len(paths) > 1:
-            print(f"  reattest event:   appended to same file ({len(paths)} events total)")
+            print(f"  reattest events:  appended ({len(paths)} entries total)")
         print(f"  read with:        tibet-audit genesis {paths[0]}")
     return 0 if verdict.grant_allowed else 1
 

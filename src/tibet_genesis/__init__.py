@@ -24,14 +24,19 @@ Public API:
     )
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from .candidate import (
     GENESIS_EVENT_KIND,
+    MAGIC_BYTES_CLEAN_SLATE,
+    MAGIC_TAT_GENESIS_OK,
+    MAGIC_TAT_REATTEST_REQ,
+    TAT_INTENT_REQUEST_REATTESTATION,
     GenesisCandidate,
     HashBundle,
     capture_candidate,
     canonical_hash,
+    genesis_ssm_label,
 )
 from .verdict import (
     AirlockVerdict,
@@ -42,14 +47,23 @@ from .verdict import (
     verify_candidate,
 )
 from .events import (
+    TAT_VERSION,
+    HAS_TIBET_DROP,
     build_genesis_event,
     build_reattestation_event,
+    build_reattestation_tat,
     write_genesis_event,
 )
 
 __all__ = [
     "__version__",
     "GENESIS_EVENT_KIND",
+    "MAGIC_BYTES_CLEAN_SLATE",
+    "MAGIC_TAT_GENESIS_OK",
+    "MAGIC_TAT_REATTEST_REQ",
+    "TAT_INTENT_REQUEST_REATTESTATION",
+    "TAT_VERSION",
+    "HAS_TIBET_DROP",
     "GenesisCandidate",
     "HashBundle",
     "AirlockVerdict",
@@ -57,10 +71,12 @@ __all__ = [
     "MergeVerdict",
     "capture_candidate",
     "canonical_hash",
+    "genesis_ssm_label",
     "verify_candidate",
     "diff_against_t0",
     "merge_or_block",
     "build_genesis_event",
     "build_reattestation_event",
+    "build_reattestation_tat",
     "write_genesis_event",
 ]

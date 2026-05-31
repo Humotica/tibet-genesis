@@ -23,6 +23,60 @@ from typing import Any, Optional
 GENESIS_EVENT_KIND = "tibet.genesis.t-1.v1"
 MAGIC_BYTES_CLEAN_SLATE = "T1_CLEAN_SLATE"
 
+# Magic bytes for hard parser-keuze on genesis-emitted records (SSM §4 — magic
+# bytes are intrinsic surface, no trust by name alone but enable dispatch
+# without decrypting the sealed payload).
+MAGIC_TAT_REATTEST_REQ = "T1_REATTEST_REQ"
+MAGIC_TAT_GENESIS_OK = "T1_GENESIS_OK"
+
+# TAT envelope intent for tibet-genesis dirty verdicts. Jasper 31 mei: separate
+# from send_attestation. send_attestation = ik stuur een bewijsobject;
+# request_re_attestation = ik vraag fresh assurance vóór ik iets vertrouw.
+TAT_INTENT_REQUEST_REATTESTATION = "request_re_attestation"
+
+
+def _ssm_safe(s: str) -> str:
+    """Lower + dot-stripped + dash-stripped slug for SSM dispatch labels.
+
+    SSM ABNF (draft-vandemeent-tibet-semantic-surface-manifest-00 §9):
+    surface-name = time-fragment "." context "." profile "." priority
+    Each segment must be flat, low-leakage, no embedded dots.
+    """
+    safe = "".join(c if c.isalnum() or c == "-" else "_" for c in s.lower())
+    return safe.strip("_-") or "anon"
+
+
+def genesis_ssm_label(
+    severity: str = "request",
+    *,
+    priority: str = "urgent",
+    time_fragment: str = "now",
+) -> str:
+    """Build a 4-dot canonical SSM dispatch label for a genesis envelope.
+
+    Follows SSM ABNF strictly (draft-vandemeent-tibet-semantic-surface-manifest-00 §9):
+        surface-name = time-fragment "." context "." profile "." priority
+
+    Default: `now.request.genesis-reattest.urgent`
+
+    Conventions:
+        now.request.genesis-reattest.urgent     — operator must rescan (airlock dirty)
+        now.important.genesis-reattest.urgent   — merge-time rejection, escalated
+        now.confirm.genesis-ready.normal        — clean verdict, grant ok
+
+    Tool_id is NOT included in the surface — SSM spec mandates low-leakage
+    labels (tool_id may contain paths / sensitive strings). The tool_id
+    travels in `payload_ref.label` inside the TAT envelope.
+
+    SSM one-line: makes sealed containers routable without making them
+    trustable by name alone. Trust comes from deep verify (trust-kernel +
+    biometric roundtrip), not from the dispatch label.
+    """
+    if severity not in {"request", "important", "confirm", "urgent"}:
+        severity = "request"
+    profile = "genesis-ready" if severity == "confirm" else "genesis-reattest"
+    return f"{time_fragment}.{severity}.{profile}.{priority}"
+
 
 def canonical_hash(value: Any) -> str:
     """sha256:<hex> over canonical JSON encoding of value. Stable across runs."""

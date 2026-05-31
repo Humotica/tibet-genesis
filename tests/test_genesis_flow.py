@@ -232,3 +232,120 @@ def test_write_event_appends_jsonl(tmp_path):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# --- 0.1.2: TAT envelope shape + SSM dispatch label + canonical hash --------
+
+
+def test_genesis_ssm_label_4dot_canonical():
+    from tibet_genesis import genesis_ssm_label
+    label = genesis_ssm_label("request")
+    assert label.count(".") == 3, "SSM ABNF strict: 4 segments separated by 3 dots"
+    parts = label.split(".")
+    assert parts == ["now", "request", "genesis-reattest", "urgent"]
+
+
+def test_genesis_ssm_label_severity_changes_profile_for_confirm():
+    from tibet_genesis import genesis_ssm_label
+    confirm = genesis_ssm_label("confirm", priority="normal")
+    assert confirm == "now.confirm.genesis-ready.normal"
+
+
+def test_genesis_ssm_label_unknown_severity_falls_back():
+    from tibet_genesis import genesis_ssm_label
+    label = genesis_ssm_label("nonsense")
+    assert label.startswith("now.request.")  # falls back to request
+
+
+def test_genesis_ssm_label_low_leakage_no_tool_id():
+    """SSM spec mandates low-leakage labels — tool_id must NOT appear in surface."""
+    from tibet_genesis import genesis_ssm_label
+    label = genesis_ssm_label("important")
+    assert "mcp:" not in label
+    assert "/" not in label
+    assert "secret" not in label
+
+
+def test_build_reattestation_tat_envelope_shape():
+    from tibet_genesis import (
+        TAT_VERSION,
+        TAT_INTENT_REQUEST_REATTESTATION,
+        MAGIC_TAT_REATTEST_REQ,
+        capture_candidate,
+        verify_candidate,
+        diff_against_t0,
+        merge_or_block,
+        build_reattestation_tat,
+    )
+    candidate = capture_candidate(
+        tool_id="mcp:test",
+        schema={"x": 1},
+        description="dirty",
+        allowed_tools=["a"],
+        endpoint="https://example",
+        registry_source="https://registry.example",
+        magic_bytes="WRONG_MAGIC",  # forces airlock=poisoned
+    )
+    airlock, tibet_token, jis_claim = verify_candidate(candidate)
+    merge = diff_against_t0(candidate)
+    verdict = merge_or_block(candidate, airlock=airlock, merge=merge,
+                             tibet_token=tibet_token, jis_claim=jis_claim)
+
+    env = build_reattestation_tat(verdict)
+    # TAT envelope structural shape
+    assert env["tat_version"] == TAT_VERSION
+    assert env["intent"] == TAT_INTENT_REQUEST_REATTESTATION
+    assert env["magic"] == MAGIC_TAT_REATTEST_REQ
+    assert env["surface"].count(".") == 3
+    assert env["from"] == "jis:tibet-genesis:airlock"
+    # payload_ref points at canonical candidate_hash, not just schema_hash
+    assert env["payload_ref"]["kind"] == "external-ref"
+    assert env["payload_ref"]["hash"] == candidate.canonical_hash()
+    assert env["payload_ref"]["hash"] != candidate.bundle.schema_hash
+    assert env["payload_ref"]["mime"] == "application/vnd.tibet.genesis.candidate+json"
+    assert env["payload_ref"]["label"] == "genesis-candidate"
+    assert "tool_id" in env["payload_ref"]["fields"]
+    assert "schema_hash" in env["payload_ref"]["fields"]
+    assert "retrieved_at" in env["payload_ref"]["fields"]
+    # policy: no-fail-open + no external AI + zero hops
+    assert env["policy"]["requires_consent"] is True
+    assert env["policy"]["requires_re_attestation"] is True
+    assert env["policy"]["max_forward_hops"] == 0
+    assert env["policy"]["allow_external_ai"] is False
+    # receipts: i-poll default + only re_attested expected
+    assert env["receipts"]["ack_route"] == "ipoll"
+    assert env["receipts"]["expected"] == ["re_attested"]
+
+
+def test_canonical_candidate_hash_covers_all_jasper_spec_fields():
+    """Jasper spec 31 mei: candidate_hash = H(tool_id, schema_hash, description_hash,
+    allowed_tools_hash, endpoint_hash, registry_source, retrieved_at).
+    Verify changing any of those fields changes the hash.
+    """
+    from tibet_genesis import capture_candidate
+    base = capture_candidate(
+        tool_id="mcp:base", schema={"x": 1}, description="d",
+        allowed_tools=["a"], endpoint="https://e", registry_source="https://r",
+    )
+    h0 = base.canonical_hash()
+    # changing tool_id changes hash
+    alt = capture_candidate(
+        tool_id="mcp:OTHER", schema={"x": 1}, description="d",
+        allowed_tools=["a"], endpoint="https://e", registry_source="https://r",
+        fork_id=base.fork_id,  # same fork
+    )
+    assert alt.canonical_hash() != h0
+    # changing endpoint changes hash
+    alt2 = capture_candidate(
+        tool_id="mcp:base", schema={"x": 1}, description="d",
+        allowed_tools=["a"], endpoint="https://DIFFERENT", registry_source="https://r",
+        fork_id=base.fork_id,
+    )
+    assert alt2.canonical_hash() != h0
+    # changing description changes hash
+    alt3 = capture_candidate(
+        tool_id="mcp:base", schema={"x": 1}, description="DIFFERENT",
+        allowed_tools=["a"], endpoint="https://e", registry_source="https://r",
+        fork_id=base.fork_id,
+    )
+    assert alt3.canonical_hash() != h0

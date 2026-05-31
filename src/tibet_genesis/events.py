@@ -14,8 +14,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from .candidate import GENESIS_EVENT_KIND
+from .candidate import (
+    GENESIS_EVENT_KIND,
+    MAGIC_TAT_GENESIS_OK,
+    MAGIC_TAT_REATTEST_REQ,
+    TAT_INTENT_REQUEST_REATTESTATION,
+    genesis_ssm_label,
+)
 from .verdict import GenesisVerdict
+
+
+TAT_VERSION = "0.1"
+
+# Optional tibet-drop import — `[tat]` extra enables stricter validation.
+# Without it, we emit our own JSON shape; with it, downstream code can validate
+# against tibet-drop's reference impl.
+try:
+    import tibet_drop as _tibet_drop  # type: ignore[import-not-found]
+    HAS_TIBET_DROP = True
+except Exception:  # noqa: BLE001
+    _tibet_drop = None
+    HAS_TIBET_DROP = False
 
 
 def _utcnow_iso() -> str:
@@ -65,6 +84,103 @@ def build_genesis_event(verdict: GenesisVerdict, *, event_type: str = "t-1.captu
         "requires_reattestation": verdict.requires_reattestation,
         "_emitter": "tibet-genesis",
     }
+
+
+def build_reattestation_tat(verdict: GenesisVerdict) -> dict[str, Any]:
+    """Build the re-attestation request as a TAT envelope (intent=request_re_attestation).
+
+    Conforms to Jasper's 31 mei TAT envelope spec + Touch-And-Transfer wire
+    protocol (see `tibet-drop` for the reference implementation). tibet-genesis
+    is the pre-grant orchestration layer — it EMITS TAT envelopes, it is not
+    a TAT impl itself.
+
+    Layered position (Jasper-correction 31 mei):
+        magic bytes     — hard parser-keuze, no trust by name
+        SSM surface     — readable dispatch label (4-dot ABNF strict)
+        TAT envelope    — consent/TTL/policy/transfer intent (this)
+        Genesis payload — candidate hash + T-1/T0 context
+        Trust-kernel    — verify / enforce / re-attest
+        TIBET chain     — causal truth
+
+    The receiving trust-kernel / comms-kernel chooses the vehicle:
+        - smartphone native biometric (Pixel 10 KIT)
+        - laptop fingerprint sensor
+        - i-poll delegated to user's .aint smartphone
+        - external USB token
+        - passkey + .aint fallback
+
+    The TAT envelope is vehicle-agnostic; the SSM dispatch label + magic bytes
+    enable routing without opening the payload.
+    """
+    c = verdict.candidate
+    candidate_hash = c.canonical_hash()
+
+    envelope: dict[str, Any] = {
+        # Top-level intrinsic surface (SSM §4.3) — hard parser-keuze first.
+        "magic": MAGIC_TAT_REATTEST_REQ,
+        "surface": genesis_ssm_label(
+            severity="important" if verdict.merge.verdict != "ready" else "request",
+            priority="urgent",
+        ),
+
+        # TAT envelope (Jasper-spec 31 mei).
+        "tat_version": TAT_VERSION,
+        "transfer_id": f"tat_reattest_{c.fork_id}",
+        "from": "jis:tibet-genesis:airlock",
+        "to": c.retriever_identity,
+        "intent": TAT_INTENT_REQUEST_REATTESTATION,
+
+        # payload_ref: NO bytes to transfer — points at the dirty candidate hash
+        # so the responder knows exactly which pre-grant object needs fresh
+        # assurance. Causal chain forged immediately (Jasper: "deterministisch
+        # ecosysteem — geen impliciete status of bungelende verzoeken").
+        "payload_ref": {
+            "kind": "external-ref",
+            "hash": candidate_hash,
+            "size": 0,
+            "mime": "application/vnd.tibet.genesis.candidate+json",
+            "label": "genesis-candidate",
+            "fields": [
+                "tool_id",
+                "schema_hash",
+                "description_hash",
+                "allowed_tools_hash",
+                "endpoint_hash",
+                "registry_source",
+                "retrieved_at",
+            ],
+        },
+
+        "policy": {
+            "ttl_seconds": 300,
+            "requires_consent": True,
+            "requires_re_attestation": True,
+            "max_forward_hops": 0,
+            "allow_external_ai": False,
+        },
+
+        "proofs": {
+            "jis_claim": verdict.jis_claim,
+            "tibet_token": verdict.tibet_token,
+            "airlock_verdict": verdict.airlock.verdict,
+            "sender_re_attestation": None,
+            "receiver_re_attestation_required": True,
+        },
+
+        "receipts": {
+            "expected": ["re_attested"],
+            "ack_route": "ipoll",
+        },
+
+        # Trace fields (not part of TAT spec but useful for tibet-audit).
+        "_emitter": "tibet-genesis",
+        "_genesis_fork_id": c.fork_id,
+        "_genesis_airlock_verdict": verdict.airlock.verdict,
+        "_genesis_merge_verdict": verdict.merge.verdict,
+        "_genesis_reason": verdict.merge.reason or verdict.airlock.reason,
+        "_strict_tat_validation": HAS_TIBET_DROP,
+    }
+    return envelope
 
 
 def build_reattestation_event(verdict: GenesisVerdict) -> dict[str, Any]:
