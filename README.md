@@ -15,6 +15,8 @@
 
 `tibet-genesis` is **pre-grant orchestration** — it decides *whether* a candidate may be promoted to T0 ready. It is **not** a TAT (Touch-And-Transfer) implementation. For the TAT wire protocol Python reference + CLI tooling, devs should use [`tibet-drop`](https://pypi.org/project/tibet-drop/).
 
+The TAT envelope emitted on a dirty verdict conforms to the **Touch-And-Transfer** wire format specified in IETF Internet-Draft [`draft-vandemeent-tibet-tat`](https://datatracker.ietf.org/doc/draft-vandemeent-tibet-tat/) (one of 10 TIBET/JIS drafts on the IETF datatracker). The `intent=request_re_attestation` value is the genesis-specific intent layered on that wire shape.
+
 ```
 CEP          umbrella / continuity messaging model
 TIBET        causal truth
