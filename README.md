@@ -263,6 +263,33 @@ Global flags: `--json` (raw JSON output including TAT envelope).
 
 See `STACK.md` in the [Humotica org](https://github.com/Humotica/.github/blob/main/STACK.md) for the full canonical package map.
 
+
+## Structural schema-enforcement (v0.1.4) — Principe 1, closes DEEPTHINK bulk-exfil
+
+When an agent talks through a *legitimate* channel, bound the payload **shape**
+mathematically — then exfil-sized or smuggled data breaks the contract structurally,
+before any content is read. Weigh the structure, not the meaning.
+
+```python
+from tibet_genesis import SchemaContract, FieldSpec, validate_payload_shape
+
+# an internal-API query tool may emit exactly this shape:
+contract = SchemaContract(fields={
+    "query": FieldSpec("string", max_len=50),
+    "id":    FieldSpec("int", max_value=10_000_000),
+})
+
+validate_payload_shape({"query": "list users", "id": 42}, contract).ok   # True
+# DEEPTHINK stuffs a base64 exfil blob into the 50-char field:
+validate_payload_shape({"query": "QQ=="*500, "id": 1}, contract).ok      # False -> gate closes
+```
+
+Rejects: oversize payload (`max_total_bytes`), wrong type, over-length field, over-value
+number, unexpected keys (smuggling), missing required field. Deterministic, machine-speed,
+no intent-understanding. **Honest residual edge:** a secret that *fits* the bounded shape
+(a short token in a 50-char field) passes structure — bulk-exfil dies here, low-bandwidth
+fit-the-schema leak is the Causal TimeVector anomaly + rate-limit layer's job.
+
 ## License
 
 MIT — see [`LICENSE`](./LICENSE).

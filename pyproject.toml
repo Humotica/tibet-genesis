@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tibet-genesis"
-version = "0.1.3"
+version = "0.1.4"
 description = "T-1 Genesis pass — pre-grant orchestration above/beside the TAT wire layer. Self-FIR/A bilateral consent on hardware-anchored claims. Dirty verdict emits a TAT envelope (intent=request_re_attestation) with magic bytes + SSM dispatch surface, so trust-kernel can choose vehicle (smartphone/laptop/passkey) for fresh biometric roundtrip. 'Identity is your hardware anchor. Trust is your fingerprint at the moment of use.'"
 readme = "README.md"
 license = "MIT"

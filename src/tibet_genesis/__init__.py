@@ -24,7 +24,7 @@ Public API:
     )
 """
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 from .candidate import (
     GENESIS_EVENT_KIND,
@@ -46,6 +46,7 @@ from .verdict import (
     merge_or_block,
     verify_candidate,
 )
+from .schema_gate import SchemaContract, FieldSpec, ShapeVerdict, validate_payload_shape
 from .events import (
     TAT_VERSION,
     HAS_TIBET_DROP,
@@ -56,6 +57,7 @@ from .events import (
 )
 
 __all__ = [
+    "SchemaContract", "FieldSpec", "ShapeVerdict", "validate_payload_shape",
     "__version__",
     "GENESIS_EVENT_KIND",
     "MAGIC_BYTES_CLEAN_SLATE",
